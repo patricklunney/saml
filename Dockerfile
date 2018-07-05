@@ -1,29 +1,35 @@
 # Docker Image for Shib
 # Set Base Image
-FROM centos:7
+FROM ubuntu:16.04
 MAINTAINER Patrick Lunney
-LABEL Vendor="CentOS" \
+LABEL Vendor="Ubuntu" \
       License=GPLv2 \
       Version=2.4.6-40
 
-RUN yum -y --setopt=tsflags=nodocs update && \
-    yum -y --setopt=tsflags=nodocs install httpd && \
-    yum install httpd php libxml2 shibboleth -y \
-    yum clean all
+## Apply Proxies
+ENV  http_proxy='http://PITC-Zscaler-Americas-Cincinnati3PR.proxy.corporate.ge.com:80'
+ENV  https_proxy='http://PITC-Zscaler-Americas-Cincinnati3PR.proxy.corporate.ge.com:80'
 
-
-# RUN firewall-cmd --permanent --zone=public --add-service=http
-# RUN firewall-cmd --permanent --zone=public --add-service=https
-# RUN firewall-cmd --reload
+RUN apt-get update -y
+RUN apt-get install curl -y
+RUN apt-get install apache2 -y 
+RUN apt-get install libapache2-mod-shib2 -y
+RUN apt-get install php libapache2-mod-php php-mcrypt php-mysql -y
 
 EXPOSE 80
 
 COPY index.php                  /var/www/html
-COPY shibboleth2.xml            /etc/shibboleth2
-COPY fss_gecompany_com_IDP.xml  /etc/shibboleth2
+COPY shibboleth2.xml            /etc/shibboleth
+COPY fss_gecompany_com_IDP.xml  /etc/shibboleth
+COPY attribute-map.xml          /etc/shibboleth
+COPY testappsaml.conf           /etc/apache2/sites-enabled
 
-# Simple startup script to avoid some issues observed with container restart
-ADD run-httpd.sh /run-httpd.sh
-RUN chmod -v +x /run-httpd.sh
+RUN rm /var/www/html/index.html
+RUN openssl req -x509 -sha256 -nodes -days 3650 -newkey rsa:2048 -subj "/CN=$HOSTNAME" -keyout /etc/shibboleth/sp-key.pem -out /etc/shibboleth/sp-cert.pem
 
-CMD ["/run-httpd.sh"]
+RUN shibd -t
+RUN apache2ctl configtest
+
+COPY run.sh /usr/bin/run.sh
+RUN chmod +x /usr/bin/run.sh
+ENTRYPOINT ["/usr/bin/run.sh"] 
